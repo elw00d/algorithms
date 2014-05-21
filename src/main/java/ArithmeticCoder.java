@@ -7,7 +7,6 @@ import java.io.ByteArrayOutputStream;
  */
 public class ArithmeticCoder {
     private final int alphabetSize;
-    private final int[] rawProbs;
     private final int precision;
     private final int[] probs;
 
@@ -20,7 +19,6 @@ public class ArithmeticCoder {
         assert !(precision < 2 || precision > 32);
         assert alphabetSize <= 1 << (precision - 2);
         this.alphabetSize = alphabetSize;
-        this.rawProbs = new int[alphabetSize];
         this.probs = new int[alphabetSize];
         this.precision = precision;
         this.half = 1 << (precision - 1);
@@ -31,6 +29,8 @@ public class ArithmeticCoder {
     // на выходе должны быть probs, в котором нет ни одного нулевого элемента,
     // а сумма всех значений не превышает qtr
     public void count(int[] message){
+        int[] rawProbs = new int[alphabetSize];
+
         // Сначала просто считаем количество каждого элемента, нормализуя их если
         // чьё-то кол-во превосходит qtr (для избежания переполнения)
         int maxCount = 0;
@@ -119,8 +119,6 @@ public class ArithmeticCoder {
 
     public ByteArrayOutputStream encode(int[] message) {
         stream = new ByteArrayOutputStream(  );
-        //int length = message.length;
-        //stream.write( length );
 
         // Накапливающаяся сумма встречаемости символов
         // Первый элемент - 0, второй - 0 + встречаемость первого, итд
@@ -141,13 +139,9 @@ public class ArithmeticCoder {
             long range = (right & 0xFFFFFFFFL) - (left & 0xFFFFFFFFL) + 1;
             assert compareUnsigned( range , qtr) >= 0;
 
-            //System.out.print( String.format( "i = %d Left: %d Right: %d", i, left, right ) );
-
             int oldLeft = left;
             left = ( int ) (oldLeft + sumProbs[c] * (range) / totalCount );
             right = ( int ) (oldLeft + (sumProbs[c] + probs[c]) * (range) / totalCount - 1);
-
-            //System.out.println( String.format( "-> Left: %d Right: %d", left, right ) );
 
             // Normalize if need
             while (true){
@@ -171,11 +165,21 @@ public class ArithmeticCoder {
             }
         }
 
-        // Последние 2 бита, определяющие четверть интервала, в которой лежит счс range
-        // это либо вторая четверть, либо третья, поэтому вывод будет либо 01 либо 10
-        // Все последующие биты уже не влияют (т.к. декодер будет остановлен).
+        // Последние 2 бита, определяющие четверть интервала, в которой лежит счс искомое число
+        // Это либо вторая четверть, либо третья (либо любая из них, если интервал включает их обе), поэтому вывод будет либо 01 либо 10
+        // (если бы число лежало в 1ой или 4ой четверти, то предварительно была бы проведена нормализация)
+        // На самом деле, мы можем допустить, что число может лежать и в 1ой или 4ой четверти (если текущий рабочий
+        // интервал захватывает одну из них), но тогда нам потребуется больше бит для уточнения этих координат.
+        // А 2ой или 3ий четверть-интервал захвачен текущим рабочим интервалом _целиком_, поэтому нам достаточно
+        // взять первое число (самое левое) из этого четвертьинтервала.
+        // Эти 2 бита необходимы, т.к. по текущему состоянию интервала может быть непонятно, где находится число.
+        // У нас есть интервал, например, [0.1; 0.7) и если мы не записываем последние биты в файл, то это
+        // равносильно тому, что мы выбрали из последнего интервала число 0, которое не входит в [0.1; 0.7), что неверно.
+        // В данной ситуации мы можем должны вывести последние 2 бита 01 (т.к. из средних четверть-интервалов [0.25; 0.5) и [0.5; 0.75)
+        // только первый покрывается полностью). Если бы наш рабочий интервал был [0.1; 0.75+), то мы бы могли вывести как 01, так и 10.
+        // Все последующие биты уже не являются необходимыми.
         carry++;
-        if(compareUnsigned( left , firstQtr - 1) <= 0){
+        if ( compareUnsigned( left, firstQtr - 1 ) <= 0 ) {
             outBits( 0, carry );
         } else {
             outBits( 1, carry );
@@ -215,7 +219,6 @@ public class ArithmeticCoder {
     public int[] decode(ByteArrayInputStream inputStream, int len) {
         int[] message = new int[len];
         int value = readFirstNumber( inputStream );
-        System.out.println( Integer.toBinaryString( value ) );
 
         int left = 0;
         int right = ( int ) ((1L << precision) - 1);
@@ -244,16 +247,11 @@ public class ArithmeticCoder {
                 if (compareUnsigned( sumProbs[c] + probs[c], threshold) > 0) break;
             }
 
-            //c--;
             message[i] = c;
-
-            //System.out.print( String.format( "i = %d Left: %d Right: %d value:%d", i, left, right, value ) );
 
             int oldLeft = left;
             left = ( int ) (oldLeft + sumProbs[c] * (range) / totalCount );
             right = ( int ) (oldLeft + (sumProbs[c] + probs[c]) * (range) / totalCount - 1);
-
-            //System.out.println(String.format( "-> Left: %d Right: %d", left, right));
 
             // Normalize if need
             while (true){
