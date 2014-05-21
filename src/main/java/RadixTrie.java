@@ -99,7 +99,7 @@ public class RadixTrie<T> {
         }
         // Find first node in path with non-null value (looking back)
         int k = path.size() - 1;
-        Node n = path.get( k );
+        Node<T> n = path.get( k );
         while(n.o == null&&k >= 0){
             k--;
             n = path.get( k );
