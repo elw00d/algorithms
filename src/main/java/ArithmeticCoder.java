@@ -156,9 +156,11 @@ public class ArithmeticCoder {
                     left -= half;
                     right -= half;
                 } else if (compareUnsigned( left , firstQtr) >= 0 && compareUnsigned( right , thirdQtr - 1) <= 0) {
-                    carry++;
-                    left -= qtr;
-                    right -= qtr;
+                    //carry++;
+                    //left -= qtr;
+                    //right -= qtr;
+                    right = half - 1;
+                    continue;
                 } else break;
                 left += left;
                 right += right + 1;
@@ -261,9 +263,11 @@ public class ArithmeticCoder {
                     left -= half;
                     right -= half;
                 } else if (compareUnsigned( left , firstQtr) >= 0 && compareUnsigned( right , thirdQtr - 1) <= 0) {
-                    value -= qtr;
-                    left -= qtr;
-                    right -= qtr;
+                    //value -= qtr;
+                    //left -= qtr;
+                    //right -= qtr;
+                    right = half - 1;
+                    continue;
                 } else break;
                 left += left;
                 right += right + 1;

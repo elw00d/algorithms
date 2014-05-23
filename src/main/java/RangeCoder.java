@@ -99,6 +99,6 @@ public class RangeCoder {
         }
         int totalCount = sumProbs[alphabetSize - 1] + probs[alphabetSize - 1];
 
-
+        return null;
     }
 }
