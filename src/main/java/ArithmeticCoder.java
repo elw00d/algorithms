@@ -157,7 +157,7 @@ public class ArithmeticCoder {
                     left -= half;
                     right -= half;
                 } else if (compareUnsigned( left , firstQtr) >= 0 && compareUnsigned( right , thirdQtr - 1) <= 0) {
-                    if (carryDropCount == 8) {
+                    if (carryDropCount == 7) {
                         right = half - 1;
                         carryDropCount = 0;
                         continue;
@@ -270,7 +270,7 @@ public class ArithmeticCoder {
                     left -= half;
                     right -= half;
                 } else if (compareUnsigned( left , firstQtr) >= 0 && compareUnsigned( right , thirdQtr - 1) <= 0) {
-                    if (carryDropCount == 8) {
+                    if (carryDropCount == 7) {
                         right = half - 1;
                         carryDropCount = 0;
                         continue;
