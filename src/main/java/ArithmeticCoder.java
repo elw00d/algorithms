@@ -144,6 +144,7 @@ public class ArithmeticCoder {
             right = ( int ) (oldLeft + (sumProbs[c] + probs[c]) * (range) / totalCount - 1);
 
             // Normalize if need
+            int carryDropCount = 0;
             while (true){
                 if(compareUnsigned( right, half - 1) <= 0){
                     // out 0 and drop carry
@@ -156,11 +157,16 @@ public class ArithmeticCoder {
                     left -= half;
                     right -= half;
                 } else if (compareUnsigned( left , firstQtr) >= 0 && compareUnsigned( right , thirdQtr - 1) <= 0) {
-                    //carry++;
-                    //left -= qtr;
-                    //right -= qtr;
-                    right = half - 1;
-                    continue;
+                    if (carryDropCount == 8) {
+                        right = half - 1;
+                        carryDropCount = 0;
+                        continue;
+                    } else {
+                        carry++;
+                        left -= qtr;
+                        right -= qtr;
+                        carryDropCount++;
+                    }
                 } else break;
                 left += left;
                 right += right + 1;
@@ -256,6 +262,7 @@ public class ArithmeticCoder {
             right = ( int ) (oldLeft + (sumProbs[c] + probs[c]) * (range) / totalCount - 1);
 
             // Normalize if need
+            int carryDropCount = 0;
             while (true){
                 if(compareUnsigned( right, half - 1) <= 0){
                 } else if (compareUnsigned( left , half) >= 0) {
@@ -263,11 +270,16 @@ public class ArithmeticCoder {
                     left -= half;
                     right -= half;
                 } else if (compareUnsigned( left , firstQtr) >= 0 && compareUnsigned( right , thirdQtr - 1) <= 0) {
-                    //value -= qtr;
-                    //left -= qtr;
-                    //right -= qtr;
-                    right = half - 1;
-                    continue;
+                    if (carryDropCount == 8) {
+                        right = half - 1;
+                        carryDropCount = 0;
+                        continue;
+                    } else {
+                        value -= qtr;
+                        left -= qtr;
+                        right -= qtr;
+                        carryDropCount++;
+                    }
                 } else break;
                 left += left;
                 right += right + 1;
