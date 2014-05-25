@@ -140,8 +140,9 @@ public class ArithmeticCoder {
             assert compareUnsigned( range , qtr) >= 0;
 
             int oldLeft = left;
-            left = ( int ) (oldLeft + sumProbs[c] * (range) / totalCount );
-            right = ( int ) (oldLeft + (sumProbs[c] + probs[c]) * (range) / totalCount - 1);
+            assert range / totalCount >= 1;
+            left = ( int ) (oldLeft + sumProbs[c] * (range / totalCount) );
+            right = ( int ) (oldLeft + (sumProbs[c] + probs[c]) * (range / totalCount) - 1);
 
             // Normalize if need
             int carryDropCount = 0;
@@ -250,16 +251,27 @@ public class ArithmeticCoder {
 
             // Найти такой элемент, left которого бы при кодировании был бы самым ближайшим слева
             int c;
-            int threshold = ( int ) ((((value & 0xFFFFFFFFL) - left + 1) * totalCount - 1) / range);
+//            int threshold = ( int ) ((((value & 0xFFFFFFFFL) - left + 1) * totalCount - 1) / range);
+            int threshold = ( int ) ((((value & 0xFFFFFFFFL) - left + 1) * totalCount - 1)
+                    / (range - range % totalCount));
             for(c = 0; c < alphabetSize; c++){
                 if (compareUnsigned( sumProbs[c] + probs[c], threshold) > 0) break;
             }
+//            int c;
+//            for(c = 0; c < alphabetSize; c++){
+//                int jLeft = ( int ) (left + sumProbs[c] * (range / totalCount) );
+//                int jRight = ( int ) (left + (sumProbs[c] + probs[c]) * (range / totalCount) - 1);
+//                if(compareUnsigned(value, jLeft) >= 0 && compareUnsigned(value, jRight) <= 0){
+//                    break;
+//                }
+//            }
 
             message[i] = c;
 
             int oldLeft = left;
-            left = ( int ) (oldLeft + sumProbs[c] * (range) / totalCount );
-            right = ( int ) (oldLeft + (sumProbs[c] + probs[c]) * (range) / totalCount - 1);
+            assert range / totalCount >= 1;
+            left = ( int ) (oldLeft + sumProbs[c] * (range / totalCount) );
+            right = ( int ) (oldLeft + (sumProbs[c] + probs[c]) * (range / totalCount) - 1);
 
             // Normalize if need
             int carryDropCount = 0;
