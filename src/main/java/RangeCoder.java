@@ -113,10 +113,10 @@ public class RangeCoder {
         for (int i = 0; i < message.length; i++){
             int c = message[i];
 
-            low = low + sumProbs[c] * range / totalCount;
-            range = (sumProbs[c] + probs[c]) * range / totalCount;
+            low = (int) (low + sumProbs[c] * (range & 0xffffffffL) / totalCount);
+            range = (int) (probs[c] * (range & 0xffffffffL) / totalCount);
 
-            while (range <= MIN_RANGE){
+            while (compareUnsigned(range, MIN_RANGE) <= 0){
                 if (compareUnsigned( low , TOP - MIN_RANGE - 1) < 0) {
                     // Сейчас мы видим, что переноса нет, т.к. весь интервал находится слева от TOP
                     // Поэтому если у нас до этого был перенос, мы сбрасываем carry байт 0xff в файл
@@ -181,13 +181,11 @@ public class RangeCoder {
     }
 
     private int readFirstNumber(ByteArrayInputStream inputStream){
-        int v = readNextByte( inputStream );
-        v <<= 8;
-        v |= readNextByte( inputStream );
-        v <<= 8;
-        v |= readNextByte( inputStream );
-        v <<= 8;
-        v |= readNextByte( inputStream );
+        byte b1 = readNextByte(inputStream);
+        byte b2 = readNextByte(inputStream);
+        byte b3 = readNextByte(inputStream);
+        byte b4 = readNextByte(inputStream);
+        int v = ((((((b1 & 0xff) << 8) | b2 & 0xff) << 8) | b3 & 0xff) << 8) | b4 & 0xff;
         return v;
     }
 
@@ -203,10 +201,30 @@ public class RangeCoder {
         }
         int totalCount = sumProbs[alphabetSize - 1] + probs[alphabetSize - 1];
 
+        final int TOP = 1 << (PRECISION - 1);
+        // Маска для сброса 32-ого бита с low (это необходимо после обработки переноса)
+        final int lowMask = TOP - 1;
+
         int low = 0;
         int range = 1 << (PRECISION - 1);
         for ( int i = 0; i < len; i++ ) {
-            int threshold = (value - low) * totalCount / range;
+            int threshold = (int) ((((value - low + 1) & 0xffffffffL) * totalCount - 1) / (range & 0xffffffffL));
+
+            int c;
+            for(c = 0; c < alphabetSize; c++){
+                if (compareUnsigned( sumProbs[c] + probs[c], threshold) > 0) break;
+            }
+
+            message[i] = c;
+
+            low = (int) (low + sumProbs[c] * (range & 0xffffffffL) / totalCount);
+            range = (int) ((sumProbs[c] + probs[c]) * (range & 0xffffffffL) / totalCount);
+
+            while (compareUnsigned(range , MIN_RANGE) <= 0){
+                low <<= 8;
+                low &= lowMask;
+                range <<= 8;
+            }
         }
 
         return message;
