@@ -121,7 +121,8 @@ public class RangeCoder {
             }
 
             while (compareUnsigned(range, MIN_RANGE) <= 0){
-                if (compareUnsigned( low , TOP - MIN_RANGE - 1) < 0) {
+                // todo : verify
+                if (compareUnsigned( low , TOP - MIN_RANGE) < 0) {
                     // Сейчас мы видим, что переноса нет, т.к. весь интервал находится слева от TOP
                     // Поэтому если у нас до этого был перенос, мы сбрасываем carry байт 0xff в файл
                     if (nextByteInited)
@@ -218,7 +219,11 @@ public class RangeCoder {
                 System.out.println();
             }
 
-            int threshold = (int) ((((value - low + 1) & 0xffffffffL) * totalCount - 1) / (range & 0xffffffffL));
+            int threshold;
+            if (compareUnsigned(value, low) >= 0)
+                threshold = (int) ((((value - low + 1) & 0xffffffffL) * totalCount - 1) / (range & 0xffffffffL));
+            else
+                threshold = (int) ((((0x80000000L + value - low + 1) & 0xffffffffL) * totalCount - 1) / (range & 0xffffffffL));
 
             int c;
             for(c = 0; c < alphabetSize; c++){
