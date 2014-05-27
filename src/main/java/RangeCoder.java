@@ -23,7 +23,7 @@ public class RangeCoder {
     // на выходе должны быть probs, в котором нет ни одного нулевого элемента,
     // а сумма всех значений не превышает 2^8
     public void count(int[] message){
-        final int totalCountTreshold = 1 << 8;
+        final int totalCountTreshold = MIN_RANGE;
         int[] rawProbs = new int[alphabetSize];
 
         // Сначала просто считаем количество каждого элемента, нормализуя их если
@@ -116,12 +116,16 @@ public class RangeCoder {
             low = (int) (low + sumProbs[c] * (range & 0xffffffffL) / totalCount);
             range = (int) (probs[c] * (range & 0xffffffffL) / totalCount);
 
+            if ( i < 10 || i + 10 > message.length) {
+                System.out.println(String.format( "Low: %s Range: %s", Integer.toHexString( low ), Integer.toHexString( range ) ));
+            }
+
             while (compareUnsigned(range, MIN_RANGE) <= 0){
                 if (compareUnsigned( low , TOP - MIN_RANGE - 1) < 0) {
                     // Сейчас мы видим, что переноса нет, т.к. весь интервал находится слева от TOP
                     // Поэтому если у нас до этого был перенос, мы сбрасываем carry байт 0xff в файл
                     if (nextByteInited)
-                        stream.write( nextByte );
+                        stream.write( nextByte & 0xff );
 
                     for (int j = 0; j < carry; j++)
                         stream.write( 0xFF );
@@ -134,7 +138,7 @@ public class RangeCoder {
                 } else if ( compareUnsigned( low, TOP ) >= 0 ) {
                     // Рабочий интервал справа от TOP - значит, мы дошли до переноса, и нам нужно
                     // прибавить 1 к nextByte и сбросить carry нулевых байт в файл
-                    stream.write( nextByte + 1 );
+                    stream.write( (nextByte + 1) & 0xff );
 
                     for (int j = 0; j < carry; j++)
                         stream.write( 0x00 );
@@ -155,7 +159,7 @@ public class RangeCoder {
 
         // Завершаем кодирование
         if (message.length != 0) {
-            if ( low < TOP ) {
+            if ( compareUnsigned( low , TOP) < 0 ) {
                 stream.write( nextByte );
                 for (; carry > 0; carry--)
                     stream.write( 0xff );
@@ -169,6 +173,7 @@ public class RangeCoder {
             // Так как нам нужны только старшие 23 бита, то
             // 24-ый бит несущественен, и маска = 0xfe
             stream.write( (low >>> (23 - 16)) & 0xfe );
+            //stream.write( (low & 0x7f) << 1 );
         }
 
         return stream;
@@ -184,8 +189,9 @@ public class RangeCoder {
         byte b1 = readNextByte(inputStream);
         byte b2 = readNextByte(inputStream);
         byte b3 = readNextByte(inputStream);
-        byte b4 = readNextByte(inputStream);
-        int v = ((((((b1 & 0xff) << 8) | b2 & 0xff) << 8) | b3 & 0xff) << 8) | b4 & 0xff;
+        //byte b4 = readNextByte(inputStream);
+        //int v = ((((((b1 & 0xff) << 8) | b2 & 0xff) << 8) | b3 & 0xff) << 8) | b4 & 0xff;
+        int v = ((((((b1 & 0xff) << 8) | b2 & 0xff) << 8) | b3 & 0xff) << 8) >>> 1;
         return v;
     }
 
@@ -208,6 +214,10 @@ public class RangeCoder {
         int low = 0;
         int range = 1 << (PRECISION - 1);
         for ( int i = 0; i < len; i++ ) {
+            if ( i + 2 == len ) {
+                System.out.println();
+            }
+
             int threshold = (int) ((((value - low + 1) & 0xffffffffL) * totalCount - 1) / (range & 0xffffffffL));
 
             int c;
@@ -218,11 +228,18 @@ public class RangeCoder {
             message[i] = c;
 
             low = (int) (low + sumProbs[c] * (range & 0xffffffffL) / totalCount);
-            range = (int) ((sumProbs[c] + probs[c]) * (range & 0xffffffffL) / totalCount);
+            range = (int) (probs[c] * (range & 0xffffffffL) / totalCount);
+
+            if ( i < 10 || i + 10 > len) {
+                System.out.println(String.format( "Low: %s Range: %s", Integer.toHexString( low ), Integer.toHexString( range ) ));
+            }
 
             while (compareUnsigned(range , MIN_RANGE) <= 0){
                 low <<= 8;
                 low &= lowMask;
+                value <<= 8;
+                value &= lowMask;
+                value |= (readNextByte( inputStream ) & 0xff) << 7;
                 range <<= 8;
             }
         }
