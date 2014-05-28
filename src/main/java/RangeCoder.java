@@ -227,6 +227,9 @@ public class RangeCoder {
                 threshold = (int) ((((value - low + 1) & 0xffffffffL) * totalCount - 1) / (range & 0xffffffffL));
             else
                 threshold = (int) ((((0x80000000L + value - low + 1) & 0xffffffffL) * totalCount - 1) / (range & 0xffffffffL));
+            if (threshold > totalCount){
+                threshold = (int) ((((value - 0x80000000L - low + 1) & 0xffffffffL) * totalCount - 1) / (range & 0xffffffffL));
+            }
 
             int c;
             for(c = 0; c < alphabetSize; c++){
@@ -248,7 +251,7 @@ public class RangeCoder {
                 value <<= 1;
                 value |= lastBit;
                 value <<= 7;
-                value &= lowMask;
+                //value &= lowMask;
                 int nextByte = readNextByte( inputStream ) & 0xff;
                 value |= nextByte >>> 1;
                 lastBit = nextByte & 1;
