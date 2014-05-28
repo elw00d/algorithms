@@ -121,7 +121,6 @@ public class RangeCoder {
             }
 
             while (compareUnsigned(range, MIN_RANGE) <= 0){
-                // todo : verify
                 if (compareUnsigned( low , TOP - MIN_RANGE) < 0) {
                     // Сейчас мы видим, что переноса нет, т.к. весь интервал находится слева от TOP
                     // Поэтому если у нас до этого был перенос, мы сбрасываем carry байт 0xff в файл
@@ -190,11 +189,15 @@ public class RangeCoder {
         byte b1 = readNextByte(inputStream);
         byte b2 = readNextByte(inputStream);
         byte b3 = readNextByte(inputStream);
-        //byte b4 = readNextByte(inputStream);
-        //int v = ((((((b1 & 0xff) << 8) | b2 & 0xff) << 8) | b3 & 0xff) << 8) | b4 & 0xff;
-        int v = ((((((b1 & 0xff) << 8) | b2 & 0xff) << 8) | b3 & 0xff) << 8) >>> 1;
+        byte b4 = readNextByte(inputStream);
+        int v = ((((((b1 & 0xff) << 8) | b2 & 0xff) << 8) | b3 & 0xff) << 8) | b4 & 0xff;
+        v >>>= 1;
+        lastBit = b4 & 1;
+//        int v = ((((((b1 & 0xff) << 8) | b2 & 0xff) << 8) | b3 & 0xff) << 8) >>> 1;
         return v;
     }
+
+    private int lastBit;
 
     public int[] decode(ByteArrayInputStream inputStream, int len) {
         int[] message = new int[len];
@@ -242,9 +245,13 @@ public class RangeCoder {
             while (compareUnsigned(range , MIN_RANGE) <= 0){
                 low <<= 8;
                 low &= lowMask;
-                value <<= 8;
+                value <<= 1;
+                value |= lastBit;
+                value <<= 7;
                 value &= lowMask;
-                value |= (readNextByte( inputStream ) & 0xff) << 7;
+                int nextByte = readNextByte( inputStream ) & 0xff;
+                value |= nextByte >>> 1;
+                lastBit = nextByte & 1;
                 range <<= 8;
             }
         }
