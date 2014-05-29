@@ -116,10 +116,6 @@ public class RangeCoder {
             low = (int) (low + sumProbs[c] * (range & 0xffffffffL) / totalCount);
             range = (int) (probs[c] * (range & 0xffffffffL) / totalCount);
 
-            if ( i < 10 || i + 10 > message.length) {
-                System.out.println(String.format( "Low: %s Range: %s", Integer.toHexString( low ), Integer.toHexString( range ) ));
-            }
-
             while (compareUnsigned(range, MIN_RANGE) <= 0){
                 if (compareUnsigned( low , TOP - MIN_RANGE) < 0) {
                     // Сейчас мы видим, что переноса нет, т.к. весь интервал находится слева от TOP
@@ -193,7 +189,6 @@ public class RangeCoder {
         int v = ((((((b1 & 0xff) << 8) | b2 & 0xff) << 8) | b3 & 0xff) << 8) | b4 & 0xff;
         v >>>= 1;
         lastBit = b4 & 1;
-//        int v = ((((((b1 & 0xff) << 8) | b2 & 0xff) << 8) | b3 & 0xff) << 8) >>> 1;
         return v;
     }
 
@@ -218,18 +213,10 @@ public class RangeCoder {
         int low = 0;
         int range = 1 << (PRECISION - 1);
         for ( int i = 0; i < len; i++ ) {
-            if ( i + 2 == len ) {
-                System.out.println();
-            }
-
-            int threshold;
-            if (compareUnsigned(value, low) >= 0)
-                threshold = (int) ((((value - low + 1) & 0xffffffffL) * totalCount - 1) / (range & 0xffffffffL));
-            else
-                threshold = (int) ((((0x80000000L + value - low + 1) & 0xffffffffL) * totalCount - 1) / (range & 0xffffffffL));
-            if (threshold > totalCount){
-                threshold = (int) ((((value - 0x80000000L - low + 1) & 0xffffffffL) * totalCount - 1) / (range & 0xffffffffL));
-            }
+            // Следующее необходимо для того, чтобы выполнить вычитание между двумя 31-битными числами: ((value - low) & 0x7fffffffL)
+            // Оно работает, причём даже в случае если числа имеют установленные 32-ые биты, поэтому нам не надо принудительно
+            // выполнять value &= lowMask и low &= lowMask ни при их изменении, ни перед вычитанием.
+            int threshold = (int) (((((value - low) & 0x7fffffffL) + 1) * totalCount - 1) / (range & 0xffffffffL));
 
             int c;
             for(c = 0; c < alphabetSize; c++){
@@ -238,25 +225,28 @@ public class RangeCoder {
 
             message[i] = c;
 
-            low = (int) (low + sumProbs[c] * (range & 0xffffffffL) / totalCount);
+            low = (int) ((low & 0xffffffffL) + sumProbs[c] * (range & 0xffffffffL) / totalCount);
             range = (int) (probs[c] * (range & 0xffffffffL) / totalCount);
-
-            if ( i < 10 || i + 10 > len) {
-                System.out.println(String.format( "Low: %s Range: %s", Integer.toHexString( low ), Integer.toHexString( range ) ));
-            }
 
             while (compareUnsigned(range , MIN_RANGE) <= 0){
                 low <<= 8;
+                // А здесь low все-таки необходимо подрезать для избежания возможного переполнения
+                // при дальнейших вычислениях
                 low &= lowMask;
                 value <<= 1;
                 value |= lastBit;
                 value <<= 7;
+                // Не нужно, т.к. на результат формулы вычитания (value - low) & 0x7fffffffL не влияет
                 //value &= lowMask;
                 int nextByte = readNextByte( inputStream ) & 0xff;
                 value |= nextByte >>> 1;
                 lastBit = nextByte & 1;
                 range <<= 8;
             }
+
+            // Убеждаемся, что мы никогда не выходим за рамки 32-битового числа
+            // Low может выходить за пределы 31-битового числа, но Low+Range - всегда должны помещаться в 32 бита
+            assert compareUnsigned( (low & 0xffffffffL) + (range & 0xffffffffL), 0x100000000L ) <= 0;
         }
 
         return message;
