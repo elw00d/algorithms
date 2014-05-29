@@ -10,6 +10,11 @@ import java.nio.file.Paths;
  */
 public class RangeCompressionProgram {
     public static void main(String[]args) throws IOException {
+//        byte a = 5;
+//        byte b = 10;
+//        System.out.println((a - b) & 0xff );
+//        if (1==1) return;
+
 //        byte[] bytes = Files.readAllBytes(Paths.get("d:\\all\\compression\\algorithms\\src\\main\\resources\\book1.txt"));
         byte[] bytes = Files.readAllBytes(Paths.get("d:\\elwood\\work\\dzru\\trie\\src\\main\\resources\\book1.txt"));
         int[] message = new int[bytes.length];
