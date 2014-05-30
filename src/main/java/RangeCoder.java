@@ -218,7 +218,8 @@ public class RangeCoder {
             // Оно работает, причём даже в случае если числа имеют установленные 32-ые биты, поэтому нам не надо принудительно
             // выполнять value &= lowMask и low &= lowMask ни при их изменении, ни перед вычитанием.
             assert compareUnsigned(value, low) >= 0;
-            int threshold = (int) (((((value - low) & 0x7fffffffL) + 1) * totalCount - 1) / (range & 0xffffffffL));
+            //int threshold = (int) (((((value - low) & 0x7fffffffL) + 1) * totalCount - 1) / (range & 0xffffffffL));
+            int threshold = (int) (((((value - low) & 0xffffffffL) + 1) * totalCount - 1) / (range & 0xffffffffL));
 
             int c;
             for(c = 0; c < alphabetSize; c++){
@@ -231,27 +232,28 @@ public class RangeCoder {
             range = (int) (probs[c] * (range & 0xffffffffL) / totalCount);
 
             while (compareUnsigned(range , MIN_RANGE) <= 0){
-//                boolean carryBit = false;
-                if ((low & (1 << 23) )!= ((low + range - 1) & (1 << 23) )) {
-                    carryBit = (value & (1<<23) ) != (low & (1 << 23) );
-                } else {
-                    carryBit = (low & (1 << 23) ) == 0;
+                boolean invertCarry = false;
+                if (((low << 8) & 0x80000000) != 0) {
+                    invertCarry = true;
                 }
                 low <<= 8;
                 // А здесь low все-таки необходимо подрезать для избежания возможного переполнения
                 // при дальнейших вычислениях
                 low &= lowMask;
-//                if (!carryBit)
-//                    carryBit = (value & (1<<23) ) != 0;
                 value <<= 1;
                 value |= lastBit;
                 value <<= 7;
                 // Не нужно, т.к. на результат формулы вычитания (value - low) & 0x7fffffffL не влияет
                 //value &= lowMask;
-                if (carryBit)
-                    value |= 0x80000000;
-                else
-                    value &= lowMask;
+
+                if (invertCarry){
+                    value += 0x80000000;
+//                    if ((value & 0x80000000) != 0) {
+//                        value &= lowMask;
+//                    } else {
+//                        value |= 0x80000000;
+//                    }
+                }
                 int nextByte = readNextByte( inputStream ) & 0xff;
                 value |= nextByte >>> 1;
                 lastBit = nextByte & 1;
