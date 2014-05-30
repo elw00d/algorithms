@@ -233,6 +233,9 @@ public class RangeCoder {
 
             while (compareUnsigned(range , MIN_RANGE) <= 0){
                 boolean invertCarry = false;
+                // Если при расширении рабочего интервала произойдёт смещение low из правой половины в левую,
+                // мы должны соответственно инвертировать старший бит value для того, чтобы value продолжало
+                // быть между low и low+range.
                 if (((low << 8) & 0x80000000) != 0) {
                     invertCarry = true;
                 }
