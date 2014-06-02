@@ -113,7 +113,7 @@ public class RangeCoder {
         for (int i = 0; i < message.length; i++){
             int c = message[i];
 
-            low = (int) (low + sumProbs[c] * (range & 0xffffffffL) / totalCount);
+            low = (int) ((low & 0xffffffffL) + sumProbs[c] * (range & 0xffffffffL) / totalCount);
             range = (int) (probs[c] * (range & 0xffffffffL) / totalCount);
 
             while (compareUnsigned(range, MIN_RANGE) <= 0){
@@ -192,7 +192,75 @@ public class RangeCoder {
         return v;
     }
 
+    private int readFirstNumberOpt(ByteArrayInputStream inputStream){
+        byte b1 = readNextByte(inputStream);
+        byte b2 = readNextByte(inputStream);
+        byte b3 = readNextByte(inputStream);
+        byte b4 = readNextByte(inputStream);
+        int v = ((((((b1 & 0xff) << 8) | b2 & 0xff) << 8) | b3 & 0xff) << 8) | b4 & 0xff;
+        v >>>= 1;
+        lastReadedByte = b4;
+        return v;
+    }
+
     private int lastBit;
+    private int lastReadedByte;
+
+    public int[] decodeOptimized(ByteArrayInputStream inputStream, int len) {
+        int[] message = new int[len];
+        int value = readFirstNumberOpt( inputStream );
+
+        // Накапливающаяся сумма встречаемости символов
+        // Первый элемент - 0, второй - 0 + встречаемость первого, итд
+        int[] sumProbs = new int[alphabetSize];
+        for ( int i = 0; i < alphabetSize; i++ ) {
+            sumProbs[i] = i > 0 ? sumProbs[i - 1] + probs[i - 1] : 0;
+        }
+        int totalCount = sumProbs[alphabetSize - 1] + probs[alphabetSize - 1];
+
+        final int TOP = 1 << (PRECISION - 1);
+        // Маска для сброса 32-ого бита с low (это необходимо после обработки переноса)
+        final int lowMask = TOP - 1;
+
+        int low = 0;
+        int range = 1 << (PRECISION - 1);
+
+        for ( int i = 0; i < len; i++ ) {
+            // Следующее необходимо для того, чтобы выполнить вычитание между двумя 31-битными числами: ((value - low) & 0x7fffffffL)
+            // Оно работает, причём даже в случае если числа имеют установленные 32-ые биты, поэтому нам не надо принудительно
+            // выполнять value &= lowMask и low &= lowMask ни при их изменении, ни перед вычитанием.
+            int threshold = (int) (((((value - low) & 0x7fffffffL) + 1) * totalCount - 1) / (range & 0xffffffffL));
+
+            int c;
+            for(c = 0; c < alphabetSize; c++){
+                if (compareUnsigned( sumProbs[c] + probs[c], threshold) > 0) break;
+            }
+
+            message[i] = c;
+
+            low = (int) ((low & 0xffffffffL) + sumProbs[c] * (range & 0xffffffffL) / totalCount);
+            range = (int) (probs[c] * (range & 0xffffffffL) / totalCount);
+
+            while (compareUnsigned(range , MIN_RANGE) <= 0){
+                low <<= 8;
+                // А здесь low все-таки необходимо подрезать для избежания возможного переполнения
+                // при дальнейших вычислениях
+                low &= lowMask;
+
+                value = (value << 8) | ((lastReadedByte & 0x01) << 7);
+                lastReadedByte = readNextByte( inputStream ) & 0xff;
+                value |= lastReadedByte >>> 1;
+
+                range <<= 8;
+            }
+
+            // Убеждаемся, что мы никогда не выходим за рамки 32-битового числа
+            // Low может выходить за пределы 31-битового числа, но Low+Range - всегда должны помещаться в 32 бита
+            assert compareUnsigned( (low & 0xffffffffL) + (range & 0xffffffffL), 0x100000000L ) <= 0;
+        }
+
+        return message;
+    }
 
     public int[] decode(ByteArrayInputStream inputStream, int len) {
         int[] message = new int[len];
@@ -212,7 +280,6 @@ public class RangeCoder {
 
         int low = 0;
         int range = 1 << (PRECISION - 1);
-        boolean carryBit = false;
         for ( int i = 0; i < len; i++ ) {
             // Следующее необходимо для того, чтобы выполнить вычитание между двумя 31-битными числами: ((value - low) & 0x7fffffffL)
             // Оно работает, причём даже в случае если числа имеют установленные 32-ые биты, поэтому нам не надо принудительно
@@ -235,19 +302,14 @@ public class RangeCoder {
                 boolean invertCarry = false;
                 // Если при расширении рабочего интервала произойдёт смещение low из правой половины в левую,
                 // мы должны соответственно инвертировать старший бит value для того, чтобы value продолжало
-                // быть между low и low+range.
+                // указывать на число между low и low+range-1.
                 if (((low << 8) & 0x80000000) != 0) {
                     invertCarry = true;
                 }
-                low <<= 8;
-                // А здесь low все-таки необходимо подрезать для избежания возможного переполнения
-                // при дальнейших вычислениях
-                low &= lowMask;
+                low = (low << 8) & lowMask;
                 value <<= 1;
                 value |= lastBit;
                 value <<= 7;
-                // Не нужно, т.к. на результат формулы вычитания (value - low) & 0x7fffffffL не влияет
-                //value &= lowMask;
 
                 if (invertCarry){
                     value += 0x80000000;

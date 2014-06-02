@@ -20,7 +20,7 @@ public class RangeCompressionProgram {
         int[] message = new int[bytes.length];
         for(int i=0; i < bytes.length;i++)
             message[i]=bytes[i] & 0xFF;
-        RangeCoder coder = new RangeCoder( 256 );
+        CarrylessRangeCoder coder = new CarrylessRangeCoder( 256 );
         coder.count( message );
 
         ByteArrayOutputStream encoded = coder.encode( message );
@@ -29,7 +29,7 @@ public class RangeCompressionProgram {
         System.out.println(String.format("Source size %d encoded size %d ratio %f%%",
                 message.length, encodedBytes.length, encodedBytes.length * 100.0 / message.length));
 
-        int[] decoded = coder.decode( new ByteArrayInputStream( encodedBytes ), message.length );
+        int[] decoded = coder.decodeOptimized( new ByteArrayInputStream( encodedBytes ), message.length );
 
         for (int i = 0; i < bytes.length; i++){
             if ( decoded[i] != message[i] ) {
