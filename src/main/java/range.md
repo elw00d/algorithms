@@ -302,4 +302,17 @@ v & 0xffffffffL
 
 Без этого они конвертнутся автоматически, с учётом знака. Недостаточно конвертнуть только 1 из операндов !
 
+Арифметик:
+Source size 1473547 encoded size 896750 ratio 60,856559%
+
+Шиндлеровский кодер:
 Source size 1473547 encoded size 896661 ratio 60,850519%
+
+Субботинский неоптимизированный кодер (MIN_RANGE = 2^16):
+Source size 1473547 encoded size 897545 ratio 60,910510%
+
+Мой вариант с MIN_RANGE = 2^24:
+Source size 1473547 encoded size 943180 ratio 64,007460%
+
+Мой вариант с MIN_RANGE = 2^17
+Source size 1473547 encoded size 897460 ratio 60,904742%

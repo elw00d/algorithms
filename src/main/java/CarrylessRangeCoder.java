@@ -9,7 +9,9 @@ public class CarrylessRangeCoder {
     private final int alphabetSize;
     private final int PRECISION = 32;
     private final int BITS_IN_BYTE = 8;
-    private final int MIN_RANGE = 1 << ( PRECISION - BITS_IN_BYTE);
+    // На сколько бит уменьшается MIN_RANGE по сравнению с начальным 2^24
+    private final int MIN_RANGE_LOWERIZE_BITS = 7;
+    private final int MIN_RANGE = 1 << ( PRECISION - BITS_IN_BYTE - MIN_RANGE_LOWERIZE_BITS);
     private final int[] probs;
 
     // размер алфавита <= 2^(PRECISION-1-BITS_IN_BYTE) (минимум по точке на символ в интервале MIN_RANGE)
@@ -101,18 +103,26 @@ public class CarrylessRangeCoder {
         int low = 0;
         long range = 1L << PRECISION;
 
+        // 24-битное число, в котором MIN_RANGE_LOWERIZE_BITS старших бит установлено в 1
+        // для MIN_RANGE = 2^16 - 0xff0000 (MIN_RANGE_LOWERIZE_BITS = 8), для MIN_RANGE = 2^24 - 0x000000 (MIN_RANGE_LOWERIZE_BITS = 0)
+        int mask = (~((1 << (24-MIN_RANGE_LOWERIZE_BITS)) - 1)) & 0xffffff;
+
         for (int i = 0; i < message.length; i++){
             int c = message[i];
+
+//            if (Math.abs( i - 5 ) <= 5) {
+//                System.out.println(String.format( "i=%d low=%s range=%s c=%d", i, Integer.toHexString( low ), Long.toHexString( range ), c ));
+//            }
 
             low = (int) ((low & 0xffffffffL) + sumProbs[c] * range / totalCount);
             range = probs[c] * range / totalCount;
 
             while (compareUnsigned(range, MIN_RANGE) <= 0){
-                if ( (low & 0xff0000) == 0xff0000 &&
+                if ( (low & mask) == mask &&
                         compareUnsigned(range + (low & (MIN_RANGE - 1)), MIN_RANGE) >= 0 ){
                     range = MIN_RANGE - (low & (MIN_RANGE - 1));
                 }
-                stream.write(( byte ) (0xff & (low >> PRECISION - BITS_IN_BYTE)) );
+                stream.write(( byte ) (0xff & (low >> (PRECISION - BITS_IN_BYTE))) );
                 low <<= 8;
                 range <<= 8;
             }
@@ -165,6 +175,10 @@ public class CarrylessRangeCoder {
         int low = 0;
         long range = 1L << PRECISION;
 
+        // 24-битное число, в котором MIN_RANGE_LOWERIZE_BITS старших бит установлено в 1
+        // для MIN_RANGE = 2^16 - 0xff0000 (MIN_RANGE_LOWERIZE_BITS = 8), для MIN_RANGE = 2^24 - 0x000000 (MIN_RANGE_LOWERIZE_BITS = 0)
+        int mask = (~((1 << (24-MIN_RANGE_LOWERIZE_BITS)) - 1)) & 0xffffff;
+
         for ( int i = 0; i < len; i++ ) {
             // Следующее необходимо для того, чтобы выполнить вычитание между двумя 31-битными числами: ((value - low) & 0x7fffffffL)
             // Оно работает, причём даже в случае если числа имеют установленные 32-ые биты, поэтому нам не надо принудительно
@@ -176,13 +190,20 @@ public class CarrylessRangeCoder {
                 if (compareUnsigned( sumProbs[c] + probs[c], threshold) > 0) break;
             }
 
+            if ( c == 256 ) {
+                System.out.println();
+            }
             message[i] = c;
+
+//            if (Math.abs( i - 5 ) <= 5) {
+//                System.out.println(String.format( "i=%d low=%s range=%s value=%s c=%d", i, Integer.toHexString( low ), Long.toHexString( range ), Integer.toHexString( value ), c ));
+//            }
 
             low = (int) ((low & 0xffffffffL) + sumProbs[c] * range / totalCount);
             range = (probs[c] * range / totalCount);
 
             while (compareUnsigned(range , MIN_RANGE) <= 0){
-                if ( (low & 0xff0000) == 0xff0000 &&
+                if ( (low & mask) == mask &&
                         compareUnsigned(range + (low & (MIN_RANGE - 1)), MIN_RANGE) >= 0 ){
                     range = MIN_RANGE - (low & (MIN_RANGE - 1));
                 }
