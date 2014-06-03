@@ -117,10 +117,24 @@ public class CarrylessRangeCoder {
             low = (int) ((low & 0xffffffffL) + sumProbs[c] * range / totalCount);
             range = probs[c] * range / totalCount;
 
-            while (compareUnsigned(range, MIN_RANGE) <= 0){
-                if ( (low & mask) == mask &&
-                        compareUnsigned(range + (low & (MIN_RANGE - 1)), MIN_RANGE) >= 0 ){
-                    range = MIN_RANGE - (low & (MIN_RANGE - 1));
+//            while (compareUnsigned(range, MIN_RANGE) <= 0){
+//                if ( (low & mask) == mask &&
+//                        compareUnsigned(range + (low & (MIN_RANGE - 1) - 1), MIN_RANGE) >= 0 ){
+//                    range = MIN_RANGE - (low & (MIN_RANGE - 1));
+//                }
+//                stream.write(( byte ) (0xff & (low >> (PRECISION - BITS_IN_BYTE))) );
+//                low <<= 8;
+//                range <<= 8;
+//            }
+
+            assert (low & 0xffffffffL) + range - 1 < (1L << PRECISION);
+            while (compareUnsigned(((low & 0xffffffffL) ^ ((low & 0xffffffffL)+range-1)), 0x1000000) < 0
+                    || (compareUnsigned( range , MIN_RANGE) <= 0)){ // if top 8 bits are equal
+                if (compareUnsigned(((low & 0xffffffffL) ^ ((low & 0xffffffffL)+range-1)), 0x1000000) < 0) {
+                } else if (compareUnsigned( range , MIN_RANGE) <= 0){
+                    assert MIN_RANGE - (low & (MIN_RANGE - 1)) == ((-low & (MIN_RANGE-1)) & 0xffffffffL);
+//                    range = MIN_RANGE - (low & (MIN_RANGE - 1));
+                    range= (-low & (MIN_RANGE-1)) & 0xffffffffL;
                 }
                 stream.write(( byte ) (0xff & (low >> (PRECISION - BITS_IN_BYTE))) );
                 low <<= 8;
@@ -132,10 +146,8 @@ public class CarrylessRangeCoder {
         if (message.length != 0) {
             stream.write( (low >>> 24) & 0xff );
             stream.write( (low >>> (24 - 8)) & 0xff );
-            // Так как нам нужны только старшие 24 бита, то
-            // последний байт можно опустить
             stream.write( (low >>> (24 - 16)) & 0xff );
-            //stream.write( (low & 0x7f) << 1 );
+            stream.write( low & 0xff );
         }
 
         return stream;
@@ -202,12 +214,24 @@ public class CarrylessRangeCoder {
             low = (int) ((low & 0xffffffffL) + sumProbs[c] * range / totalCount);
             range = (probs[c] * range / totalCount);
 
-            while (compareUnsigned(range , MIN_RANGE) <= 0){
-                if ( (low & mask) == mask &&
-                        compareUnsigned(range + (low & (MIN_RANGE - 1)), MIN_RANGE) >= 0 ){
-                    range = MIN_RANGE - (low & (MIN_RANGE - 1));
+//            while (compareUnsigned(range , MIN_RANGE) <= 0){
+//                if ( (low & mask) == mask &&
+//                        compareUnsigned(range + (low & (MIN_RANGE - 1)) - 1, MIN_RANGE) >= 0 ){
+//                    range = MIN_RANGE - (low & (MIN_RANGE - 1));
+//                }
+//
+//                low <<= 8;
+//                value = (value << 8) | (readNextByte( inputStream ) & 0xff);
+//                range <<= 8;
+//            }
+            while (compareUnsigned(((low & 0xffffffffL)^ ((low & 0xffffffffL)+range-1)), 0x1000000) < 0
+                    || (compareUnsigned( range , MIN_RANGE) <= 0)){ // if top 8 bits are equal
+                if (compareUnsigned(((low & 0xffffffffL) ^ ((low & 0xffffffffL)+range-1)), 0x1000000) < 0) {
+                } else if (compareUnsigned( range , MIN_RANGE) <= 0  ) {
+                    assert MIN_RANGE - (low & (MIN_RANGE - 1)) == ((-low & (MIN_RANGE - 1)) & 0xffffffffL);
+//                    range = MIN_RANGE - (low & (MIN_RANGE - 1));
+                    range= (-low & (MIN_RANGE-1)) & 0xffffffffL;
                 }
-
                 low <<= 8;
                 value = (value << 8) | (readNextByte( inputStream ) & 0xff);
                 range <<= 8;
