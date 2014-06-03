@@ -316,3 +316,9 @@ Source size 1473547 encoded size 943180 ratio 64,007460%
 
 Мой вариант с MIN_RANGE = 2^17
 Source size 1473547 encoded size 897460 ratio 60,904742%
+
+Субботинский с xor:
+Source size 1473547 encoded size 897499 ratio 60,907389%
+
+Мой вариант с MIN_RANGE = 2^17 и XOR перед нормализацией:
+Source size 1473547 encoded size 897444 ratio 60,903656%
