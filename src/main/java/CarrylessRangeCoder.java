@@ -87,6 +87,60 @@ public class CarrylessRangeCoder {
         return Integer.compare( a ^ 0x80000000, b ^ 0x80000000 );
     }
 
+    public static int unsignedDiv( int dividend, int divisor ) {
+        return ( int ) ((dividend & 0xffffffffL ) / (divisor & 0xffffffffL ));
+    }
+
+    /**
+     * Compares the two specified {@code long} values, treating them as unsigned values between
+     * {@code 0} and {@code 2^64 - 1} inclusive.
+     *
+     * @param a the first unsigned {@code long} to compare
+     * @param b the second unsigned {@code long} to compare
+     * @return a negative value if {@code a} is less than {@code b}; a positive value if {@code a} is
+     * greater than {@code b}; or zero if they are equal
+     */
+    public static int compare( long a, long b ) {
+        long a1 = a ^ Long.MIN_VALUE;
+        long b1 = b ^ Long.MIN_VALUE;
+        return (a1 < b1) ? -1 : ((a1 > b1) ? 1 : 0);
+    }
+
+    /**
+     * from Guava source code:
+     * <p/>
+     * Returns dividend / divisor, where the dividend and divisor are treated as unsigned 64-bit
+     * quantities.
+     *
+     * @param dividend the dividend (numerator)
+     * @param divisor  the divisor (denominator)
+     * @throws ArithmeticException if divisor is 0
+     */
+    public static long unsignedDiv( long dividend, long divisor ) {
+        if ( divisor < 0 ) { // i.e., divisor >= 2^63:
+            if ( compare( dividend, divisor ) < 0 ) {
+                return 0; // dividend < divisor
+            } else {
+                return 1; // dividend >= divisor
+            }
+        }
+
+        // Optimization - use signed division if dividend < 2^63
+        if ( dividend >= 0 ) {
+            return dividend / divisor;
+        }
+
+        /*
+         * Otherwise, approximate the quotient, check, and correct if necessary. Our approximation is
+         * guaranteed to be either exact or one less than the correct value. This follows from fact
+         * that floor(floor(x)/i) == floor(x/i) for any real x and integer i != 0. The proof is not
+         * quite trivial.
+         */
+        long quotient = ((dividend >>> 1) / divisor) << 1;
+        long rem = dividend - quotient * divisor;
+        return quotient + (compare( rem, divisor ) >= 0 ? 1 : 0);
+    }
+
     private ByteArrayOutputStream stream;
 
     public ByteArrayOutputStream encode(int[] message) {
@@ -101,7 +155,7 @@ public class CarrylessRangeCoder {
         int totalCount = sumProbs[alphabetSize - 1] + probs[alphabetSize - 1];
 
         int low = 0;
-        long range = 1L << PRECISION;
+        int range = (int) ((1L << PRECISION) - 1);
 
         // 24-битное число, в котором MIN_RANGE_LOWERIZE_BITS старших бит установлено в 1
         // для MIN_RANGE = 2^16 - 0xff0000 (MIN_RANGE_LOWERIZE_BITS = 8), для MIN_RANGE = 2^24 - 0x000000 (MIN_RANGE_LOWERIZE_BITS = 0)
@@ -114,8 +168,8 @@ public class CarrylessRangeCoder {
 //                System.out.println(String.format( "i=%d low=%s range=%s c=%d", i, Integer.toHexString( low ), Long.toHexString( range ), c ));
 //            }
 
-            low = (int) ((low & 0xffffffffL) + sumProbs[c] * range / totalCount);
-            range = probs[c] * range / totalCount;
+            low = low + sumProbs[c] * unsignedDiv(range , totalCount);
+            range = probs[c] * unsignedDiv(range , totalCount);
 
 //            while (compareUnsigned(range, MIN_RANGE) <= 0){
 //                if ( (low & mask) == mask &&
@@ -127,14 +181,14 @@ public class CarrylessRangeCoder {
 //                range <<= 8;
 //            }
 
-            assert (low & 0xffffffffL) + range - 1 < (1L << PRECISION);
-            while (compareUnsigned(((low & 0xffffffffL) ^ ((low & 0xffffffffL)+range-1)), 0x1000000) < 0
-                    || (compareUnsigned( range , MIN_RANGE) <= 0)){ // if top 8 bits are equal
-                if (compareUnsigned(((low & 0xffffffffL) ^ ((low & 0xffffffffL)+range-1)), 0x1000000) < 0) {
-                } else if (compareUnsigned( range , MIN_RANGE) <= 0){
-                    assert MIN_RANGE - (low & (MIN_RANGE - 1)) == ((-low & (MIN_RANGE-1)) & 0xffffffffL);
+            assert (low & 0xffffffffL) + range - 1 < (1L << PRECISION) - 1;
+            while (compareUnsigned((low ^ (low+range)), 0x1000000) < 0
+                    || (compareUnsigned( range , MIN_RANGE) < 0)){ // if top 8 bits are equal
+                if (compareUnsigned((low ^ low+range), 0x1000000) < 0) {
+                } else if (compareUnsigned( range , MIN_RANGE) < 0){
+                    assert MIN_RANGE - (low & (MIN_RANGE - 1)) == (-low & (MIN_RANGE-1));
 //                    range = MIN_RANGE - (low & (MIN_RANGE - 1));
-                    range= (-low & (MIN_RANGE-1)) & 0xffffffffL;
+                    range= -low & (MIN_RANGE-1);
                 }
                 stream.write(( byte ) (0xff & (low >> (PRECISION - BITS_IN_BYTE))) );
                 low <<= 8;
@@ -185,7 +239,7 @@ public class CarrylessRangeCoder {
         int totalCount = sumProbs[alphabetSize - 1] + probs[alphabetSize - 1];
 
         int low = 0;
-        long range = 1L << PRECISION;
+        int range = ( int ) ((1L << PRECISION) - 1);
 
         // 24-битное число, в котором MIN_RANGE_LOWERIZE_BITS старших бит установлено в 1
         // для MIN_RANGE = 2^16 - 0xff0000 (MIN_RANGE_LOWERIZE_BITS = 8), для MIN_RANGE = 2^24 - 0x000000 (MIN_RANGE_LOWERIZE_BITS = 0)
@@ -195,7 +249,7 @@ public class CarrylessRangeCoder {
             // Следующее необходимо для того, чтобы выполнить вычитание между двумя 31-битными числами: ((value - low) & 0x7fffffffL)
             // Оно работает, причём даже в случае если числа имеют установленные 32-ые биты, поэтому нам не надо принудительно
             // выполнять value &= lowMask и low &= lowMask ни при их изменении, ни перед вычитанием.
-            int threshold = (int) (((((value - low) & 0xffffffffL) + 1) * totalCount - 1) / range);
+            int threshold = unsignedDiv ((value - low) , unsignedDiv( range , totalCount));
 
             int c;
             for(c = 0; c < alphabetSize; c++){
@@ -211,8 +265,8 @@ public class CarrylessRangeCoder {
 //                System.out.println(String.format( "i=%d low=%s range=%s value=%s c=%d", i, Integer.toHexString( low ), Long.toHexString( range ), Integer.toHexString( value ), c ));
 //            }
 
-            low = (int) ((low & 0xffffffffL) + sumProbs[c] * range / totalCount);
-            range = (probs[c] * range / totalCount);
+            low = low + sumProbs[c] * unsignedDiv (range , totalCount);
+            range = probs[c] * unsignedDiv (range , totalCount);
 
 //            while (compareUnsigned(range , MIN_RANGE) <= 0){
 //                if ( (low & mask) == mask &&
@@ -224,13 +278,15 @@ public class CarrylessRangeCoder {
 //                value = (value << 8) | (readNextByte( inputStream ) & 0xff);
 //                range <<= 8;
 //            }
-            while (compareUnsigned(((low & 0xffffffffL)^ ((low & 0xffffffffL)+range-1)), 0x1000000) < 0
-                    || (compareUnsigned( range , MIN_RANGE) <= 0)){ // if top 8 bits are equal
-                if (compareUnsigned(((low & 0xffffffffL) ^ ((low & 0xffffffffL)+range-1)), 0x1000000) < 0) {
-                } else if (compareUnsigned( range , MIN_RANGE) <= 0  ) {
-                    assert MIN_RANGE - (low & (MIN_RANGE - 1)) == ((-low & (MIN_RANGE - 1)) & 0xffffffffL);
+
+            assert (low & 0xffffffffL) + range - 1 < (1L << PRECISION) - 1;
+            while (compareUnsigned((low ^ (low+range)), 0x1000000) < 0
+                    || (compareUnsigned( range , MIN_RANGE) < 0)){ // if top 8 bits are equal
+                if (compareUnsigned((low ^ low+range), 0x1000000) < 0) {
+                } else if (compareUnsigned( range , MIN_RANGE) < 0){
+                    assert MIN_RANGE - (low & (MIN_RANGE - 1)) == (-low & (MIN_RANGE-1));
 //                    range = MIN_RANGE - (low & (MIN_RANGE - 1));
-                    range= (-low & (MIN_RANGE-1)) & 0xffffffffL;
+                    range= -low & (MIN_RANGE-1);
                 }
                 low <<= 8;
                 value = (value << 8) | (readNextByte( inputStream ) & 0xff);

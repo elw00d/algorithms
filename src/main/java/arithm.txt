@@ -85,6 +85,10 @@ int threshold = ( int ) ((((value & 0xFFFFFFFFL) - left + 1) * totalCount - 1) /
 int threshold = ( int ) ((((value & 0xFFFFFFFFL) - left + 1) * totalCount - 1)
                     / (range - range % totalCount));
 
+TODO : Проверить, равносильно ли это формуле
+
+int threshold = (value - left) / (range / totalCount);
+
 Здесь мы делим уже не на полный range, а на ту часть range, которая действительно была использована при
 кодировании этого символа. В нашем примере это будет 256 вместо 500.
 
