@@ -5,24 +5,31 @@ import java.io.ByteArrayOutputStream;
  * @author igor.kostromin
  *         19.05.2014 11:21
  */
-public class ArithmeticCoder {
+public class ArithmeticCoder64 {
     private final int alphabetSize;
     private final int precision;
-    private final int[] probs;
+    private final long[] probs;
 
-    private final int half;
-    private final int qtr;
+    private final long half;
+    private final long qtr;
 
-    // precision - степень двойки, от 2 до 32
+    // precision - степень двойки, от 2 до 64
     // размер алфавита <= 2^(precision-2) (минимум по точке на символ в 1/4 интервала)
-    public ArithmeticCoder(int alphabetSize, int precision){
-        assert !(precision < 2 || precision > 32);
+    public ArithmeticCoder64( int alphabetSize, int precision ){
+        assert !(precision < 2 || precision > 64);
         assert alphabetSize <= 1 << (precision - 2);
         this.alphabetSize = alphabetSize;
-        this.probs = new int[alphabetSize];
+        this.probs = new long[alphabetSize];
         this.precision = precision;
-        this.half = 1 << (precision - 1);
-        this.qtr = 1 << (precision - 2);
+        this.half = 1L << (precision - 1);
+        this.qtr = 1L << (precision - 2);
+    }
+
+    public void initTest() {
+        probs[0] = qtr - 3;
+        probs[1] = 1;
+        probs[2] = 1;
+        probs[3] = 1;
     }
 
     // считает rawProbs и преобразует в probs, пригодные для кодирования
@@ -101,7 +108,7 @@ public class ArithmeticCoder {
         }
     }
 
-    private void outBits(int bit, int carry){
+    private void outBits(int bit, long carry){
         outBit( bit );
         for(int i=0;i<carry;i++)
             outBit( bit==1?0:1 );
@@ -117,32 +124,83 @@ public class ArithmeticCoder {
     private byte currentByte;
     private int bitsUsed;
 
+    /**
+     * Compares the two specified {@code long} values, treating them as unsigned values between
+     * {@code 0} and {@code 2^64 - 1} inclusive.
+     *
+     * @param a the first unsigned {@code long} to compare
+     * @param b the second unsigned {@code long} to compare
+     * @return a negative value if {@code a} is less than {@code b}; a positive value if {@code a} is
+     * greater than {@code b}; or zero if they are equal
+     */
+    public static int compare( long a, long b ) {
+        long a1 = a ^ Long.MIN_VALUE;
+        long b1 = b ^ Long.MIN_VALUE;
+        return (a1 < b1) ? -1 : ((a1 > b1) ? 1 : 0);
+    }
+
+    /**
+     * from Guava source code:
+     * <p/>
+     * Returns dividend / divisor, where the dividend and divisor are treated as unsigned 64-bit
+     * quantities.
+     *
+     * @param dividend the dividend (numerator)
+     * @param divisor  the divisor (denominator)
+     * @throws ArithmeticException if divisor is 0
+     */
+    public static long unsignedDiv( long dividend, long divisor ) {
+        if ( divisor < 0 ) { // i.e., divisor >= 2^63:
+            if ( compare( dividend, divisor ) < 0 ) {
+                return 0; // dividend < divisor
+            } else {
+                return 1; // dividend >= divisor
+            }
+        }
+
+        // Optimization - use signed division if dividend < 2^63
+        if ( dividend >= 0 ) {
+            return dividend / divisor;
+        }
+
+        /*
+         * Otherwise, approximate the quotient, check, and correct if necessary. Our approximation is
+         * guaranteed to be either exact or one less than the correct value. This follows from fact
+         * that floor(floor(x)/i) == floor(x/i) for any real x and integer i != 0. The proof is not
+         * quite trivial.
+         */
+        long quotient = ((dividend >>> 1) / divisor) << 1;
+        long rem = dividend - quotient * divisor;
+        return quotient + (compare( rem, divisor ) >= 0 ? 1 : 0);
+    }
+
     public ByteArrayOutputStream encode(int[] message) {
         stream = new ByteArrayOutputStream(  );
 
         // Накапливающаяся сумма встречаемости символов
         // Первый элемент - 0, второй - 0 + встречаемость первого, итд
-        int[] sumProbs = new int[alphabetSize];
+        long[] sumProbs = new long[alphabetSize];
         for(int i = 0; i < alphabetSize; i++){
             sumProbs[i] = i > 0 ? sumProbs[i - 1] + probs[i - 1] : 0;
         }
-        int totalCount = sumProbs[alphabetSize - 1] + probs[alphabetSize - 1];
+        long totalCount = sumProbs[alphabetSize - 1] + probs[alphabetSize - 1];
 
-        int firstQtr = 1 << (precision - 2);
-        int thirdQtr = half + firstQtr;
+        long firstQtr = 1L << (precision - 2);
+        long thirdQtr = half + firstQtr;
 
-        int left = 0;
-        int right = ( int ) ((1L << precision) - 1);
-        int carry = 0; // Сколько бит участвует в переносе
+        long left = 0;
+        // Потому что в java 1L << 64 = 1L (эквивалентно 1L << 0)
+        long right = precision == 64 ? -2 : ((1L << precision) - 1); // todo : при 64 будет неверный результат
+        long carry = 0; // Сколько бит участвует в переносе
         for (int i = 0; i < message.length; i++){
             int c = message[i];
-            long range = (right & 0xFFFFFFFFL) - (left & 0xFFFFFFFFL) + 1;
+            long range = right - left + 1;
             assert compareUnsigned( range , qtr) >= 0;
 
-            int oldLeft = left;
-            assert range / totalCount >= 1;
-            left = ( int ) (oldLeft + sumProbs[c] * (range / totalCount) );
-            right = ( int ) (oldLeft + (sumProbs[c] + probs[c]) * (range / totalCount) - 1);
+            long oldLeft = left;
+            assert unsignedDiv( range , totalCount) >= 1;
+            left = oldLeft + sumProbs[c] * unsignedDiv(range , totalCount);
+            right = oldLeft + (sumProbs[c] + probs[c]) * unsignedDiv(range , totalCount) - 1;
 
             // Normalize if need
             while (true){
@@ -163,6 +221,8 @@ public class ArithmeticCoder {
                 } else break;
                 left += left;
                 right += right + 1;
+                if (right == -1L)
+                    right = right - 1;
             }
         }
 
@@ -206,12 +266,12 @@ public class ArithmeticCoder {
         return 0;
     }
 
-    private int readFirstNumber(ByteArrayInputStream inputStream){
-        int n = 0;
+    private long readFirstNumber(ByteArrayInputStream inputStream){
+        long n = 0L;
         for (int i = 0; i < precision; i++){
             int bit = readBit( inputStream );
             if (bit == 1){
-                n |= 1 << (precision - i - 1);
+                n |= 1L << (precision - i - 1);
             }
         }
         return n;
@@ -219,33 +279,32 @@ public class ArithmeticCoder {
 
     public int[] decode(ByteArrayInputStream inputStream, int len) {
         int[] message = new int[len];
-        int value = readFirstNumber( inputStream );
+        long value = readFirstNumber( inputStream );
 
-        int left = 0;
-        int right = ( int ) ((1L << precision) - 1);
+        long left = 0;
+        long right = precision == 64 ? -2 : (1L << precision) - 1;
 
-        int valueMask = ( int ) ((1L << precision) - 1);
+        long valueMask = precision == 64 ? -1 : ((1L << precision) - 1);
 
         // Накапливающаяся сумма встречаемости символов
         // Первый элемент - 0, второй - 0 + встречаемость первого, итд
-        int[] sumProbs = new int[alphabetSize];
+        long[] sumProbs = new long[alphabetSize];
         for(int i = 0; i < alphabetSize; i++){
             sumProbs[i] = i > 0 ? sumProbs[i - 1] + probs[i - 1] : 0;
         }
-        int totalCount = sumProbs[alphabetSize - 1] + probs[alphabetSize - 1];
+        long totalCount = sumProbs[alphabetSize - 1] + probs[alphabetSize - 1];
 
-        int firstQtr = 1 << (precision - 2);
-        int thirdQtr = half + firstQtr;
+        long firstQtr = 1L << (precision - 2);
+        long thirdQtr = half + firstQtr;
 
         for(int i = 0; i < len; i++){
-            long range = (right & 0xFFFFFFFFL) - (left & 0xFFFFFFFFL) + 1;
+            long range = right - left + 1;
             assert compareUnsigned( range , qtr) >= 0;
 
             // Найти такой элемент, left которого бы при кодировании был бы самым ближайшим слева
             int c;
 //            int threshold = ( int ) ((((value & 0xFFFFFFFFL) - left + 1) * totalCount - 1) / range);
-            int threshold = ( int ) ((((value & 0xFFFFFFFFL) - left + 1) * totalCount - 1)
-                    / (range - range % totalCount));
+            long threshold = unsignedDiv (value - left, unsignedDiv(range , totalCount));
             for(c = 0; c < alphabetSize; c++){
                 if (compareUnsigned( sumProbs[c] + probs[c], threshold) > 0) break;
             }
@@ -260,10 +319,10 @@ public class ArithmeticCoder {
 
             message[i] = c;
 
-            int oldLeft = left;
-            assert range / totalCount >= 1;
-            left = ( int ) (oldLeft + sumProbs[c] * (range / totalCount) );
-            right = ( int ) (oldLeft + (sumProbs[c] + probs[c]) * (range / totalCount) - 1);
+            long oldLeft = left;
+            assert unsignedDiv( range , totalCount) >= 1;
+            left = oldLeft + sumProbs[c] * unsignedDiv(range , totalCount);
+            right = oldLeft + (sumProbs[c] + probs[c]) * unsignedDiv(range , totalCount) - 1;
 
             // Normalize if need
             while (true){
@@ -282,6 +341,8 @@ public class ArithmeticCoder {
                 value <<= 1;
                 value += readBit( inputStream );
                 value &= valueMask;
+                if (right == -1L)
+                    right = right - 1;
             }
         }
 
