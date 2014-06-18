@@ -20,7 +20,7 @@ public class RangeCompressionProgram {
         int[] message = new int[bytes.length];
         for(int i=0; i < bytes.length;i++)
             message[i]=bytes[i] & 0xFF;
-        CarrylessRangeCoder coder = new CarrylessRangeCoder( 256 );
+        CarrylessRangeCoder64 coder = new CarrylessRangeCoder64( 256 );
         coder.count( message );
 
         ByteArrayOutputStream encoded = coder.encode( message );

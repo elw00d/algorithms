@@ -304,6 +304,8 @@ v & 0xffffffffL
 
 TODO : деление в unsigned арифметике
 
+todo : Проблема, связанная с возможным переполнением переменной carryCount
+
 Арифметик:
 Source size 1473547 encoded size 896750 ratio 60,856559%
 
@@ -319,8 +321,14 @@ Source size 1473547 encoded size 943180 ratio 64,007460%
 Мой вариант с MIN_RANGE = 2^17
 Source size 1473547 encoded size 897460 ratio 60,904742%
 
-Субботинский с xor:
+Субботинский с MIN_RANGE = 2^16 и оптимизацией:
 Source size 1473547 encoded size 897499 ratio 60,907389%
 
 Мой вариант с MIN_RANGE = 2^17 и XOR перед нормализацией:
 Source size 1473547 encoded size 897444 ratio 60,903656%
+
+Субботинский 64-битный с MIN_RANGE = 2^48 и оптимизацией:
+Source size 1473547 encoded size 896830 ratio 60,861988%
+
+Субботинский 64-битный с MIN_RANGE = 2^32 и оптимизацией:
+Source size 1473547 encoded size 896665 ratio 60,850791%
