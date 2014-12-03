@@ -6,17 +6,28 @@ import java.io.ByteArrayOutputStream;
  *         18.06.2014 10:20
  */
 public class CarrylessRangeCoder64 {
+    private static final int PRECISION = 64;
+    private static final int BITS_IN_BYTE = 8;
+
+    public static final int MIN_RANGE_BITS_MAX = PRECISION - BITS_IN_BYTE;
+
     private final int alphabetSize;
-    private final int PRECISION = 64;
-    private final int BITS_IN_BYTE = 8;
-    // На сколько бит уменьшается MIN_RANGE по сравнению с начальным 2^56
-    private final int MIN_RANGE_LOWERIZE_BITS = 24;
-    private final long MIN_RANGE = 1L << ( PRECISION - BITS_IN_BYTE - MIN_RANGE_LOWERIZE_BITS);
+    private final long MIN_RANGE;
     private final int[] probs;
 
+    public CarrylessRangeCoder64(int alphabetSize) {
+        this(alphabetSize, 32);
+    }
+
     // размер алфавита <= 2^(PRECISION-1-BITS_IN_BYTE) (минимум по точке на символ в интервале MIN_RANGE)
-    public CarrylessRangeCoder64(int alphabetSize){
-        assert alphabetSize <= MIN_RANGE;
+    public CarrylessRangeCoder64(int alphabetSize, int minRangeBits){
+        if (minRangeBits < 0)
+            throw new IllegalArgumentException("minRangeBits should be >= 0");
+        if (minRangeBits > (PRECISION - BITS_IN_BYTE))
+            throw new IllegalArgumentException("minRangeBits should be <= 56");
+        MIN_RANGE = 1L << minRangeBits;
+        if (alphabetSize > MIN_RANGE)
+            throw new IllegalArgumentException("alphabetSize should be <= MIN_RANGE (2^minRangeBits)");
         this.alphabetSize = alphabetSize;
         this.probs = new int[alphabetSize];
     }
@@ -175,8 +186,8 @@ public class CarrylessRangeCoder64 {
         }
 
         // Завершаем кодирование
-        // todo : добавить формулу определения кол-ва бит, необходимых для вывода в файл при завершении
-        // в зависимости от выбранного размера MIN_RANGE
+        // note : можно ещё добавить формулу определения кол-ва бит, необходимых для вывода в файл при завершении
+        // в зависимости от выбранного размера MIN_RANGE, и уменьшить по возможности количество крайних байт
         if (message.length != 0) {
             stream.write( ( int ) ((low >>> 56) & 0xff) );
             stream.write( ( int ) ((low >>> (56 - 8)) & 0xff) );
@@ -213,7 +224,7 @@ public class CarrylessRangeCoder64 {
         return ((v1 & 0xffffffffL) << 32) | (v2 & 0xffffffffL);
     }
 
-    public int[] decodeOptimized(ByteArrayInputStream inputStream, int len) {
+    public int[] decode(ByteArrayInputStream inputStream, int len) {
         int[] message = new int[len];
         long value = readFirstNumber( inputStream );
 

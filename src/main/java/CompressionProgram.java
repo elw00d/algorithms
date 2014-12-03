@@ -13,8 +13,8 @@ public class CompressionProgram {
         int[] message = {
                 1,0,0,0,0,0,0,0,0,0,0,0,1,2,3
         };
-        //coder.count( message );
-        coder.initTest();
+        coder.count( message );
+//        coder.initTest();
 
         ByteArrayOutputStream encoded = coder.encode( message );
         for ( byte b : encoded.toByteArray() ) {

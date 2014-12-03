@@ -2,6 +2,8 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 
 /**
+ * Интервальный кодер, реализующий оригинальный алгоритм, описанный Шиндлером.
+ *
  * @author igor.kostromin
  *         22.05.2014 16:49
  */
@@ -9,6 +11,10 @@ public class RangeCoder {
     private final int alphabetSize;
     private final int PRECISION = 32;
     private final int BITS_IN_BYTE = 8;
+    // Резервируем один бит для учёта переноса
+    // Работать будем в левой половине 32-битного пространства
+    // Но если рабочий интервал будет вылезать в правую половину, то это будет для нас
+    // сигналом переноса.
     private final int MIN_RANGE = 1 << ( PRECISION - 1 - BITS_IN_BYTE);
     private final int[] probs;
 
@@ -149,6 +155,8 @@ public class RangeCoder {
                 low <<= 8;
                 low &= lowMask;
 
+                // Здесь переполнения быть не может, т.к. range <= MIN_RANGE, а
+                // MIN_RANGE ограничен 23 битами
                 range <<= 8;
             }
         }
@@ -206,7 +214,7 @@ public class RangeCoder {
     private int lastBit;
     private int lastReadedByte;
 
-    public int[] decodeOptimized(ByteArrayInputStream inputStream, int len) {
+    public int[] decode(ByteArrayInputStream inputStream, int len) {
         int[] message = new int[len];
         int value = readFirstNumberOpt( inputStream );
 
@@ -243,7 +251,7 @@ public class RangeCoder {
 
             while (compareUnsigned(range , MIN_RANGE) <= 0){
                 low <<= 8;
-                // А здесь low все-таки необходимо подрезать для избежания возможного переполнения
+                // А здесь low все-таки необходимо подрезАть для избежания возможного переполнения
                 // при дальнейших вычислениях
                 low &= lowMask;
 
@@ -262,7 +270,12 @@ public class RangeCoder {
         return message;
     }
 
-    public int[] decode(ByteArrayInputStream inputStream, int len) {
+    /**
+     * Этот метод не отличается от {@link #decode(java.io.ByteArrayInputStream, int)}, но
+     * цикл нормализации реализован в нём более медленно (для демонстрации логики работы).
+     * Эквивалентность циклов нормализации описана в документе range.md.
+     */
+    public int[] decodeSlow(ByteArrayInputStream inputStream, int len) {
         int[] message = new int[len];
         int value = readFirstNumber( inputStream );
 

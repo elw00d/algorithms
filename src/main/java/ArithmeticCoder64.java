@@ -13,6 +13,10 @@ public class ArithmeticCoder64 {
     private final long half;
     private final long qtr;
 
+    public ArithmeticCoder64(int alphabetSize) {
+        this(alphabetSize, 64);
+    }
+
     // precision - степень двойки, от 2 до 64
     // размер алфавита <= 2^(precision-2) (минимум по точке на символ в 1/4 интервала)
     public ArithmeticCoder64( int alphabetSize, int precision ){
@@ -23,13 +27,6 @@ public class ArithmeticCoder64 {
         this.precision = precision;
         this.half = 1L << (precision - 1);
         this.qtr = 1L << (precision - 2);
-    }
-
-    public void initTest() {
-        probs[0] = qtr - 3;
-        probs[1] = 1;
-        probs[2] = 1;
-        probs[3] = 1;
     }
 
     // считает rawProbs и преобразует в probs, пригодные для кодирования
@@ -190,7 +187,8 @@ public class ArithmeticCoder64 {
 
         long left = 0;
         // Потому что в java 1L << 64 = 1L (эквивалентно 1L << 0)
-        long right = precision == 64 ? -2 : ((1L << precision) - 1); // todo : при 64 будет неверный результат
+        // И при precision=64 будет неверный результат
+        long right = precision == 64 ? -2 : ((1L << precision) - 1);
         long carry = 0; // Сколько бит участвует в переносе
         for (int i = 0; i < message.length; i++){
             int c = message[i];
@@ -303,19 +301,10 @@ public class ArithmeticCoder64 {
 
             // Найти такой элемент, left которого бы при кодировании был бы самым ближайшим слева
             int c;
-//            int threshold = ( int ) ((((value & 0xFFFFFFFFL) - left + 1) * totalCount - 1) / range);
             long threshold = unsignedDiv (value - left, unsignedDiv(range , totalCount));
             for(c = 0; c < alphabetSize; c++){
                 if (compareUnsigned( sumProbs[c] + probs[c], threshold) > 0) break;
             }
-//            int c;
-//            for(c = 0; c < alphabetSize; c++){
-//                int jLeft = ( int ) (left + sumProbs[c] * (range / totalCount) );
-//                int jRight = ( int ) (left + (sumProbs[c] + probs[c]) * (range / totalCount) - 1);
-//                if(compareUnsigned(value, jLeft) >= 0 && compareUnsigned(value, jRight) <= 0){
-//                    break;
-//                }
-//            }
 
             message[i] = c;
 

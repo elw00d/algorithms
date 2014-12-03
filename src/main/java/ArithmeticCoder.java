@@ -2,6 +2,8 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 
 /**
+ * 32-битный арифметический кодер.
+ *
  * @author igor.kostromin
  *         19.05.2014 11:21
  */
@@ -12,6 +14,10 @@ public class ArithmeticCoder {
 
     private final int half;
     private final int qtr;
+
+    public ArithmeticCoder(int alphabetSize) {
+        this(alphabetSize, 32);
+    }
 
     // precision - степень двойки, от 2 до 32
     // размер алфавита <= 2^(precision-2) (минимум по точке на символ в 1/4 интервала)
@@ -117,7 +123,17 @@ public class ArithmeticCoder {
     private byte currentByte;
     private int bitsUsed;
 
-    public ByteArrayOutputStream encode(int[] message) {
+    /**
+     *
+     * @param message
+     * @param morePrecise Использовать более точную арифметику за счёт перехода к long
+     *                    (не совсем честный способ, т.к. вроде как работаем с 32 битами.
+     *                    Однако интересно проверить, насколько это улучшение точности
+     *                    усилит степень сжатия по сравнению с полным переходом на 64 бита)
+     *                    Значение должно быть одинаковым при вызовах encode и decode.
+     * @return
+     */
+    public ByteArrayOutputStream encode(int[] message, boolean morePrecise) {
         stream = new ByteArrayOutputStream(  );
 
         // Накапливающаяся сумма встречаемости символов
@@ -141,8 +157,13 @@ public class ArithmeticCoder {
 
             int oldLeft = left;
             assert range / totalCount >= 1;
-            left = ( int ) (oldLeft + sumProbs[c] * (range / totalCount) );
-            right = ( int ) (oldLeft + (sumProbs[c] + probs[c]) * (range / totalCount) - 1);
+            if (morePrecise) {
+                left = (int) ((oldLeft & 0xffffffffL) + (sumProbs[c] & 0xffffffffL) * range / totalCount);
+                right = (int) ((oldLeft & 0xffffffffL) + ((sumProbs[c] + probs[c]) & 0xffffffffL) * range / totalCount - 1);
+            } else {
+                left = (int) (oldLeft + sumProbs[c] * (range / totalCount));
+                right = (int) (oldLeft + (sumProbs[c] + probs[c]) * (range / totalCount) - 1);
+            }
 
             // Normalize if need
             while (true){
@@ -217,7 +238,7 @@ public class ArithmeticCoder {
         return n;
     }
 
-    public int[] decode(ByteArrayInputStream inputStream, int len) {
+    public int[] decode(ByteArrayInputStream inputStream, int len, boolean morePrecise) {
         int[] message = new int[len];
         int value = readFirstNumber( inputStream );
 
@@ -243,27 +264,28 @@ public class ArithmeticCoder {
 
             // Найти такой элемент, left которого бы при кодировании был бы самым ближайшим слева
             int c;
-//            int threshold = ( int ) ((((value & 0xFFFFFFFFL) - left + 1) * totalCount - 1) / range);
-            int threshold = ( int ) ((((value & 0xFFFFFFFFL) - left + 1) * totalCount - 1)
-                    / (range - range % totalCount));
+            int threshold;
+            if (morePrecise) {
+                threshold = ( int ) ((((value & 0xFFFFFFFFL) - left + 1) * totalCount - 1) / range);
+            } else {
+                threshold = (int) ((((value & 0xFFFFFFFFL) - left + 1) * totalCount - 1)
+                        / (range - range % totalCount));
+            }
             for(c = 0; c < alphabetSize; c++){
                 if (compareUnsigned( sumProbs[c] + probs[c], threshold) > 0) break;
             }
-//            int c;
-//            for(c = 0; c < alphabetSize; c++){
-//                int jLeft = ( int ) (left + sumProbs[c] * (range / totalCount) );
-//                int jRight = ( int ) (left + (sumProbs[c] + probs[c]) * (range / totalCount) - 1);
-//                if(compareUnsigned(value, jLeft) >= 0 && compareUnsigned(value, jRight) <= 0){
-//                    break;
-//                }
-//            }
 
             message[i] = c;
 
             int oldLeft = left;
             assert range / totalCount >= 1;
-            left = ( int ) (oldLeft + sumProbs[c] * (range / totalCount) );
-            right = ( int ) (oldLeft + (sumProbs[c] + probs[c]) * (range / totalCount) - 1);
+            if (morePrecise) {
+                left = (int) ((oldLeft & 0xffffffffL) + (sumProbs[c] & 0xffffffffL) * range / totalCount);
+                right = (int) ((oldLeft & 0xffffffffL) + ((sumProbs[c] + probs[c]) & 0xffffffffL) * range / totalCount - 1);
+            } else {
+                left = (int) (oldLeft + sumProbs[c] * (range / totalCount));
+                right = (int) (oldLeft + (sumProbs[c] + probs[c]) * (range / totalCount) - 1);
+            }
 
             // Normalize if need
             while (true){

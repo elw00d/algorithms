@@ -2,6 +2,8 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 
 /**
+ * 32-битная реализация субботинского интервального кодера.
+ *
  * @author igor.kostromin
  *         02.06.2014 11:17
  */
@@ -106,44 +108,17 @@ public class CarrylessRangeCoder {
         return (a1 < b1) ? -1 : ((a1 > b1) ? 1 : 0);
     }
 
-    /**
-     * from Guava source code:
-     * <p/>
-     * Returns dividend / divisor, where the dividend and divisor are treated as unsigned 64-bit
-     * quantities.
-     *
-     * @param dividend the dividend (numerator)
-     * @param divisor  the divisor (denominator)
-     * @throws ArithmeticException if divisor is 0
-     */
-    public static long unsignedDiv( long dividend, long divisor ) {
-        if ( divisor < 0 ) { // i.e., divisor >= 2^63:
-            if ( compare( dividend, divisor ) < 0 ) {
-                return 0; // dividend < divisor
-            } else {
-                return 1; // dividend >= divisor
-            }
-        }
-
-        // Optimization - use signed division if dividend < 2^63
-        if ( dividend >= 0 ) {
-            return dividend / divisor;
-        }
-
-        /*
-         * Otherwise, approximate the quotient, check, and correct if necessary. Our approximation is
-         * guaranteed to be either exact or one less than the correct value. This follows from fact
-         * that floor(floor(x)/i) == floor(x/i) for any real x and integer i != 0. The proof is not
-         * quite trivial.
-         */
-        long quotient = ((dividend >>> 1) / divisor) << 1;
-        long rem = dividend - quotient * divisor;
-        return quotient + (compare( rem, divisor ) >= 0 ? 1 : 0);
-    }
-
     private ByteArrayOutputStream stream;
 
-    public ByteArrayOutputStream encode(int[] message) {
+    /**
+     * Алгоритм кодирования, соответствующий первой версии carryless range coder'а
+     * Дмитрия Субботина. Здесь выполняется принудительное уменьшение интервала, но нормализация
+     * выполняется только при достижении MIN_RANGE. Этот код оставлен только для демонстрации.
+     *
+     * @param message
+     * @return
+     */
+    public ByteArrayOutputStream encodeUnoptimized(int[] message) {
         stream = new ByteArrayOutputStream(  );
 
         // Накапливающаяся сумма встречаемости символов
@@ -164,22 +139,60 @@ public class CarrylessRangeCoder {
         for (int i = 0; i < message.length; i++){
             int c = message[i];
 
-//            if (Math.abs( i - 5 ) <= 5) {
-//                System.out.println(String.format( "i=%d low=%s range=%s c=%d", i, Integer.toHexString( low ), Long.toHexString( range ), c ));
-//            }
-
             low = low + sumProbs[c] * unsignedDiv(range , totalCount);
             range = probs[c] * unsignedDiv(range , totalCount);
 
-//            while (compareUnsigned(range, MIN_RANGE) <= 0){
-//                if ( (low & mask) == mask &&
-//                        compareUnsigned(range + (low & (MIN_RANGE - 1) - 1), MIN_RANGE) >= 0 ){
-//                    range = MIN_RANGE - (low & (MIN_RANGE - 1));
-//                }
-//                stream.write(( byte ) (0xff & (low >> (PRECISION - BITS_IN_BYTE))) );
-//                low <<= 8;
-//                range <<= 8;
-//            }
+            assert (low & 0xffffffffL) + range - 1 < (1L << PRECISION) - 1;
+            while (compareUnsigned(range, MIN_RANGE) <= 0){
+                if ( (low & mask) == mask &&
+                        compareUnsigned(range + (low & (MIN_RANGE - 1) - 1), MIN_RANGE) >= 0 ){
+                    range = MIN_RANGE - (low & (MIN_RANGE - 1));
+                }
+                stream.write(( byte ) (0xff & (low >> (PRECISION - BITS_IN_BYTE))) );
+                low <<= 8;
+                range <<= 8;
+            }
+        }
+
+        // Завершаем кодирование
+        if (message.length != 0) {
+            stream.write( (low >>> 24) & 0xff );
+            stream.write( (low >>> (24 - 8)) & 0xff );
+            stream.write( (low >>> (24 - 16)) & 0xff );
+            stream.write( low & 0xff );
+        }
+
+        return stream;
+    }
+
+    /**
+     * Алгоритм кодирования, соответствующий второй версии carryless range coder'а
+     * Дмитрия Субботина. Здесь присутствует дополнительная оптимизация, при которой нормализация
+     * производится сразу же, как только старшие байты в low и low+range перестают меняться -
+     * это увеличивает точность кодирования. Это и есть основной вариант субботинского кодера.
+     *
+     * @param message
+     * @return
+     */
+    public ByteArrayOutputStream encode(int[] message) {
+        stream = new ByteArrayOutputStream(  );
+
+        // Накапливающаяся сумма встречаемости символов
+        // Первый элемент - 0, второй - 0 + встречаемость первого, итд
+        int[] sumProbs = new int[alphabetSize];
+        for(int i = 0; i < alphabetSize; i++){
+            sumProbs[i] = i > 0 ? sumProbs[i - 1] + probs[i - 1] : 0;
+        }
+        int totalCount = sumProbs[alphabetSize - 1] + probs[alphabetSize - 1];
+
+        int low = 0;
+        int range = (int) ((1L << PRECISION) - 1);
+
+        for (int i = 0; i < message.length; i++){
+            int c = message[i];
+
+            low = low + sumProbs[c] * unsignedDiv(range , totalCount);
+            range = probs[c] * unsignedDiv(range , totalCount);
 
             assert (low & 0xffffffffL) + range - 1 < (1L << PRECISION) - 1;
             while (compareUnsigned((low ^ (low+range)), 0x1000000) < 0
@@ -218,15 +231,13 @@ public class CarrylessRangeCoder {
         byte b2 = readNextByte(inputStream);
         byte b3 = readNextByte(inputStream);
         byte b4 = readNextByte(inputStream);
-        int v = ((((((b1 & 0xff) << 8) | b2 & 0xff) << 8) | b3 & 0xff) << 8) | b4 & 0xff;
-        //v >>>= 1;
-        //lastReadedByte = b4;
-        return v;
+        return ((((((b1 & 0xff) << 8) | b2 & 0xff) << 8) | b3 & 0xff) << 8) | b4 & 0xff;
     }
 
-    private int lastReadedByte;
-
-    public int[] decodeOptimized(ByteArrayInputStream inputStream, int len) {
+    /**
+     * Алгоритм декодирования, соответствующий методу {@link #encodeUnoptimized(int[])}.
+     */
+    public int[] decodeUnoptimized(ByteArrayInputStream inputStream, int len) {
         int[] message = new int[len];
         int value = readFirstNumber( inputStream );
 
@@ -256,35 +267,73 @@ public class CarrylessRangeCoder {
                 if (compareUnsigned( sumProbs[c] + probs[c], threshold) > 0) break;
             }
 
-            if ( c == 256 ) {
-                System.out.println();
-            }
             message[i] = c;
-
-//            if (Math.abs( i - 5 ) <= 5) {
-//                System.out.println(String.format( "i=%d low=%s range=%s value=%s c=%d", i, Integer.toHexString( low ), Long.toHexString( range ), Integer.toHexString( value ), c ));
-//            }
 
             low = low + sumProbs[c] * unsignedDiv (range , totalCount);
             range = probs[c] * unsignedDiv (range , totalCount);
 
-//            while (compareUnsigned(range , MIN_RANGE) <= 0){
-//                if ( (low & mask) == mask &&
-//                        compareUnsigned(range + (low & (MIN_RANGE - 1)) - 1, MIN_RANGE) >= 0 ){
-//                    range = MIN_RANGE - (low & (MIN_RANGE - 1));
-//                }
-//
-//                low <<= 8;
-//                value = (value << 8) | (readNextByte( inputStream ) & 0xff);
-//                range <<= 8;
-//            }
+            assert (low & 0xffffffffL) + range - 1 < (1L << PRECISION) - 1;
+            while (compareUnsigned(range , MIN_RANGE) <= 0){
+                if ( (low & mask) == mask &&
+                        compareUnsigned(range + (low & (MIN_RANGE - 1)) - 1, MIN_RANGE) >= 0 ){
+                    range = MIN_RANGE - (low & (MIN_RANGE - 1));
+                }
+
+                low <<= 8;
+                value = (value << 8) | (readNextByte( inputStream ) & 0xff);
+                range <<= 8;
+            }
+
+            // Убеждаемся, что мы никогда не выходим за рамки 32-битового числа
+            // Low может выходить за пределы 31-битового числа, но Low+Range - всегда должны помещаться в 32 бита
+            assert compareUnsigned( (low & 0xffffffffL) + (range & 0xffffffffL), 0x100000000L ) <= 0;
+        }
+
+        return message;
+    }
+
+    /**
+     * Алгоритм декодирования, соответствующий методу {@link #encode(int[])}.
+     */
+    public int[] decode(ByteArrayInputStream inputStream, int len) {
+        int[] message = new int[len];
+        int value = readFirstNumber( inputStream );
+
+        // Накапливающаяся сумма встречаемости символов
+        // Первый элемент - 0, второй - 0 + встречаемость первого, итд
+        int[] sumProbs = new int[alphabetSize];
+        for ( int i = 0; i < alphabetSize; i++ ) {
+            sumProbs[i] = i > 0 ? sumProbs[i - 1] + probs[i - 1] : 0;
+        }
+        int totalCount = sumProbs[alphabetSize - 1] + probs[alphabetSize - 1];
+
+        int low = 0;
+        int range = ( int ) ((1L << PRECISION) - 1);
+
+        for ( int i = 0; i < len; i++ ) {
+            // Следующее необходимо для того, чтобы выполнить вычитание между двумя 31-битными числами: ((value - low) & 0x7fffffffL)
+            // Оно работает, причём даже в случае если числа имеют установленные 32-ые биты, поэтому нам не надо принудительно
+            // выполнять value &= lowMask и low &= lowMask ни при их изменении, ни перед вычитанием.
+            int threshold = unsignedDiv ((value - low) , unsignedDiv( range , totalCount));
+
+            int c;
+            for(c = 0; c < alphabetSize; c++){
+                if (compareUnsigned( sumProbs[c] + probs[c], threshold) > 0) break;
+            }
+
+            message[i] = c;
+
+            low = low + sumProbs[c] * unsignedDiv (range , totalCount);
+            range = probs[c] * unsignedDiv (range , totalCount);
 
             assert (low & 0xffffffffL) + range - 1 < (1L << PRECISION) - 1;
+            // todo : упростить как это сделано в 64-битной версии
             while (compareUnsigned((low ^ (low+range)), 0x1000000) < 0
                     || (compareUnsigned( range , MIN_RANGE) < 0)){ // if top 8 bits are equal
                 if (compareUnsigned((low ^ low+range), 0x1000000) < 0) {
                 } else if (compareUnsigned( range , MIN_RANGE) < 0){
                     assert MIN_RANGE - (low & (MIN_RANGE - 1)) == (-low & (MIN_RANGE-1));
+                    // todo : доказать эквивалентность этих строк
 //                    range = MIN_RANGE - (low & (MIN_RANGE - 1));
                     range= -low & (MIN_RANGE-1);
                 }
@@ -295,7 +344,7 @@ public class CarrylessRangeCoder {
 
             // Убеждаемся, что мы никогда не выходим за рамки 32-битового числа
             // Low может выходить за пределы 31-битового числа, но Low+Range - всегда должны помещаться в 32 бита
-            //assert compareUnsigned( (low & 0xffffffffL) + (range & 0xffffffffL), 0x100000000L ) <= 0;
+            assert compareUnsigned( (low & 0xffffffffL) + (range & 0xffffffffL), 0x100000000L ) <= 0;
         }
 
         return message;
