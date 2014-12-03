@@ -29,7 +29,7 @@ public class RangeCompressionProgram {
         System.out.println(String.format("Source size %d encoded size %d ratio %f%%",
                 message.length, encodedBytes.length, encodedBytes.length * 100.0 / message.length));
 
-        int[] decoded = coder.decodeOptimized( new ByteArrayInputStream( encodedBytes ), message.length );
+        int[] decoded = coder.decode(new ByteArrayInputStream(encodedBytes), message.length);
 
         for (int i = 0; i < bytes.length; i++){
             if ( decoded[i] != message[i] ) {
